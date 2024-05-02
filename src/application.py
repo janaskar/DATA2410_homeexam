@@ -1,11 +1,12 @@
 import argparse
 import sys
 import os
-import ipaddress
+import socket
 
 max_filename_length = 32
 default_ip = "127.0.0.1"
 default_port = 8088
+window_size = 3
 
 def print_error(error_message):
     print(f"\033[1;31;1mError: \n\t{error_message}\n\033[0m", file=sys.stderr)
@@ -29,10 +30,8 @@ def main():
     def check_ipaddress(ip):
         error_message = None
         try:
-            if not ipaddress.ip_address(ip):
-                error_message = f"{ip} is not a valid IP address"
-                raise ValueError
-        except ValueError:
+            socket.inet_pton(socket.AF_INET, ip)
+        except socket.error as error_message:
             print_error(error_message)
             parser.print_help()
             exit(1)
@@ -78,7 +77,7 @@ def main():
     # Common arguments
     parser.add_argument('-i', '--ip', type=check_ipaddress, default=default_ip, help="IP address to connect/bind to, in dotted decimal notation. Default %(default)s")
     parser.add_argument('-p', '--port', type=check_port, default=default_port, help="Port to use, default %(default)s")
-    parser.add_argument('-w', '--window', type=check_positive_integer, default=3, help="Set the window size, default %(default)s packets per window")
+    parser.add_argument('-w', '--window', type=check_positive_integer, default=window_size, help="Set the window size, default %(default)s packets per window")
     parser.add_argument('-d', '--discard', type=check_positive_integer, help="Discard a packet with the given sequence number")
 
     args = parser.parse_args()
