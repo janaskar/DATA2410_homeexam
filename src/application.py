@@ -2,6 +2,7 @@ import argparse
 import sys
 import os
 import socket
+import DRTP
 
 max_filename_length = 32
 default_ip = "127.0.0.1"
@@ -72,7 +73,7 @@ def main():
 
     # Client arguments
     client_group = parser.add_argument_group('Client')
-    client_group.add_argument('-f', '--file', type=check_file, required='-c' in sys.argv or '--client' in sys.argv, help="Name of the file to send")
+    #client_group.add_argument('-f', '--file', type=check_file, required='-c' in sys.argv or '--client' in sys.argv, help="Name of the file to send")
 
     # Common arguments
     parser.add_argument('-i', '--ip', type=check_ipaddress, default=default_ip, help="IP address to connect/bind to, in dotted decimal notation. Default %(default)s")
@@ -81,7 +82,11 @@ def main():
     parser.add_argument('-d', '--discard', type=check_positive_integer, help="Discard a packet with the given sequence number")
 
     args = parser.parse_args()
-    print(args)
+
+    if args.server:
+        DRTP.run_server(args.ip, args.port)
+    elif args.client:
+        DRTP.run_client(args.ip, args.port)
     
 if __name__ == "__main__":
     main()
