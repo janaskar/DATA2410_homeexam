@@ -4,6 +4,8 @@ import random
 
 debug = False
 
+print("\n")
+
 def set_flags(syn, ack, fin, rst):
     flags = 0
     if syn:
@@ -45,7 +47,7 @@ def run_server(ip, port):
         # Start connection
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         server_socket.bind((ip, port))
-        print("Server is listening...")
+        print("Server is listening...\n")
 
         # Receive SYN packet
         syn_packet, client_address = server_socket.recvfrom(DRTP_struct.size)
@@ -61,6 +63,7 @@ def run_server(ip, port):
             print_header(packet)
         else:
             print("SYN packet is not received")
+            socket.error("SYN packet is not received")
 
         # Receive ACK packet
         ack_packet, _ = server_socket.recvfrom(DRTP_struct.size)
@@ -69,10 +72,11 @@ def run_server(ip, port):
             print("ACK packet is received")
             print_header(ack_packet)
         else:
-            print("ACK packet is not received")        
+            print("ACK packet is not received")  
+            socket.error("ACK packet is not received")      
 
         # Connection established
-        print("Connection established")
+        print("Connection established\n")
     
     # Exit on keyboard interrupt
     except KeyboardInterrupt:
@@ -87,7 +91,7 @@ def run_client(ip, port):
         # Start connection
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_socket.connect((ip, port))
-        print("Connection Establisht Phase:")
+        print("Connection Establisht Phase:\n")
 
         # Send SYN packet
         packet = pack_header(random_seq_num(), 0, set_flags(1, 0, 0, 0))
@@ -103,6 +107,7 @@ def run_client(ip, port):
             print_header(syn_ack_packet)
         else:
             print("SYN-ACK packet is not received")
+            socket.error("SYN-ACK packet is not received")
 
         # Send ACK packet
         ack_packet = pack_header(ack_num, seq_num + 1, set_flags(0, 1, 0, 0))
@@ -111,7 +116,7 @@ def run_client(ip, port):
         print_header(ack_packet)
 
         # Connection established
-        print("Connection established")
+        print("Connection established\n")
 
     # Exit on keyboard interrupt
     except KeyboardInterrupt:
