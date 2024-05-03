@@ -1,8 +1,13 @@
 import struct
 import socket
 import random
+import os
 
 debug = False
+show_packets = False
+max_filename_length = 32
+chunk_size = 1000
+timeout = 5
 
 print("\n")
 
@@ -40,7 +45,62 @@ def print_header(header):
         print(f"seq_num: {seq_num}, ack_num: {ack_num}, flags: {flags}")
 
 def random_seq_num():
-    return random.randint(0, 2 ** 16 - 1)
+    return random.randint(0, 2 ** 8 - 1) # max 256
+
+def pack_file(filename):
+    try:
+        # Array to store the packets
+        packets = []
+
+        # Encode the filename
+        encoded_filename = filename.encode()
+        # Pad the filename with null bytes to make it max_filename_length bytes long
+        encoded_filename = encoded_filename.ljust(max_filename_length, b'\0')
+
+        # Open the file and send it in chunks of 1024 bytes
+        with open(filename, 'rb') as f:
+
+            # Name of the file
+            if debug:
+                print(f"Reading from {filename}")
+
+            # Loop until the end of the file
+            first_packet = True
+            while True:
+
+                # Add the filename to the first packet and read the first chunk of the file
+                if first_packet:
+                    file_raw_data = encoded_filename + f.read(chunk_size - DRTP_struct.size - max_filename_length)
+                    first_packet = False
+
+                # Read the next chunks of the file
+                else:
+                    file_raw_data = f.read(chunk_size - DRTP_struct.size)
+                
+                # Append the packet to the list
+                packets.append(file_raw_data)
+                if not file_raw_data:
+                    break
+        
+        # Print the number of packets
+        if debug:
+            print(f"Total packets to send {len(packets)}")
+
+        # Print the first 2 packets
+        if show_packets:
+            print(f"First packet: {packets[0]}")
+            print(f"Second packet: {packets[1]}")
+
+        # Return the packets
+        return packets
+    
+    # Handle file errors
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        exit(1)
+    except Exception as e:
+        print(f"Error: {e}")
+        exit(1)
 
 def run_server(ip, port):
     try:
@@ -72,8 +132,8 @@ def run_server(ip, port):
             print("ACK packet is received")
             print_header(ack_packet)
         else:
-            print("ACK packet is not received")  
-            socket.error("ACK packet is not received")      
+            print("ACK packet is not received")
+            socket.error("ACK packet is not received")
 
         # Connection established
         print("Connection established\n")
@@ -86,7 +146,7 @@ def run_server(ip, port):
     except socket.error as e:
         print(f"Error: {e}")
 
-def run_client(ip, port):
+def run_client(ip, port, filename):
     try:
         # Start connection
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -118,10 +178,21 @@ def run_client(ip, port):
         # Connection established
         print("Connection established\n")
 
+        # Send file
+        filesize = os.path.getsize(filename)
+        print("Data Transfer Phase:\n")
+
+        if debug:
+            filesize = os.path.getsize(filename)
+            print(f"Filesize: {filesize}")
+
+        # Pack the file without the header
+        packets = pack_file(filename)
+
     # Exit on keyboard interrupt
     except KeyboardInterrupt:
         print("Client is stopped")
 
     # Handle socket errors
     except socket.error as e:
-        print(f"Error: {e}")
+        print(f"Error in handshake: {e}")

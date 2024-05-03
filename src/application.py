@@ -73,7 +73,7 @@ def main():
 
     # Client arguments
     client_group = parser.add_argument_group('Client')
-    #client_group.add_argument('-f', '--file', type=check_file, required='-c' in sys.argv or '--client' in sys.argv, help="Name of the file to send")
+    client_group.add_argument('-f', '--file', type=check_file, required='-c' in sys.argv or '--client' in sys.argv, help="Name of the file to send")
 
     # Common arguments
     parser.add_argument('-i', '--ip', type=check_ipaddress, default=default_ip, help="IP address to connect/bind to, in dotted decimal notation. Default %(default)s")
@@ -86,7 +86,7 @@ def main():
     if args.server:
         DRTP.run_server(args.ip, args.port)
     elif args.client:
-        DRTP.run_client(args.ip, args.port)
+        DRTP.run_client(args.ip, args.port, args.file)
     
 if __name__ == "__main__":
     main()
