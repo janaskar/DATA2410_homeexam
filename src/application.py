@@ -3,11 +3,7 @@ import sys
 import os
 import socket
 import DRTP
-
-max_filename_length = 32
-default_ip = "127.0.0.1"
-default_port = 8088
-window_size = 3
+from config import *
 
 def print_error(error_message):
     print(f"\033[1;31;1mError: \n\t{error_message}\n\033[0m", file=sys.stderr)
@@ -71,22 +67,25 @@ def main():
     mode_group.add_argument('-s', '--server', action="store_true", help="Run in server mode")
     mode_group.add_argument('-c', '--client', action="store_true", help="Run in client mode")
 
+    # Server arguments
+    server_group = parser.add_argument_group('Server')
+    server_group.add_argument('-d', '--discard', type=check_positive_integer, help="Discard a packet with the given sequence number")
+
     # Client arguments
     client_group = parser.add_argument_group('Client')
     client_group.add_argument('-f', '--file', type=check_file, required='-c' in sys.argv or '--client' in sys.argv, help="Name of the file to send")
+    client_group.add_argument('-w', '--window', type=check_positive_integer, default=window_size, help="Set the window size, default %(default)s packets per window")
 
     # Common arguments
     parser.add_argument('-i', '--ip', type=check_ipaddress, default=default_ip, help="IP address to connect/bind to, in dotted decimal notation. Default %(default)s")
     parser.add_argument('-p', '--port', type=check_port, default=default_port, help="Port to use, default %(default)s")
-    parser.add_argument('-w', '--window', type=check_positive_integer, default=window_size, help="Set the window size, default %(default)s packets per window")
-    parser.add_argument('-d', '--discard', type=check_positive_integer, help="Discard a packet with the given sequence number")
 
     args = parser.parse_args()
 
     if args.server:
-        DRTP.run_server(args.ip, args.port)
+        DRTP.run_server(args.ip, args.port, args.discard)
     elif args.client:
-        DRTP.run_client(args.ip, args.port, args.file)
+        DRTP.run_client(args.ip, args.port, args.file, args.window)
     
 if __name__ == "__main__":
     main()

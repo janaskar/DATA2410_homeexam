@@ -2,14 +2,18 @@ import struct
 import socket
 import random
 import os
-
-debug = False
-show_packets = False
-max_filename_length = 32
-chunk_size = 1000
-timeout = 5
+from config import *
 
 print("\n")
+
+def print_header(header, sent):
+    if debug:
+        if sent:
+            seq_num, ack_num, flags = unpack_header(header)
+            print(f"seq_num: {seq_num}, ack_num: {ack_num}, flags: {flags}")
+        else:
+            seq_num, ack_num, flags = unpack_header(header)
+            print(f"{'seq_num: {seq_num}, ack_num: {ack_num}, flags: {flags}': <20}")
 
 def set_flags(syn, ack, fin, rst):
     flags = 0
@@ -38,11 +42,6 @@ def pack_header(seq_num, ack_num, flags):
 def unpack_header(header):
     seq_num, ack_num, flags = DRTP_struct.unpack(header)
     return (seq_num, ack_num, get_flags(flags))
-
-def print_header(header):
-    if debug:
-        seq_num, ack_num, flags = unpack_header(header)
-        print(f"seq_num: {seq_num}, ack_num: {ack_num}, flags: {flags}")
 
 def random_seq_num():
     return random.randint(0, 2 ** 8 - 1) # max 256
@@ -102,35 +101,45 @@ def pack_file(filename):
         print(f"Error: {e}")
         exit(1)
 
-def run_server(ip, port):
+def send_packet(seq_num, ack_num, flags, payload=None):
+    if not payload:
+        packet = pack_header(seq_num, ack_num, flags)
+    else:
+        packet = pack_header(seq_num, ack_num, flags) + payload
+    return packet
+
+def run_server(ip, port, discard):
     try:
         # Start connection
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         server_socket.bind((ip, port))
+        server_seq_num = random_seq_num()
+        base_server_seq_num = server_seq_num
         print("Server is listening...\n")
 
         # Receive SYN packet
-        syn_packet, client_address = server_socket.recvfrom(DRTP_struct.size)
-        seg_num, _, flags = unpack_header(syn_packet)
+        packet, client_address = server_socket.recvfrom(DRTP_struct.size)
+        client_seq_num , _, flags = unpack_header(packet)
+        base_client_seq_num = client_seq_num
         print("SYN packet is received")
-        print_header(syn_packet)
+        print_header(packet[:6], False)
 
         # Send SYN-ACK packet
         if flags[0] == 1:
-            packet = pack_header(random_seq_num(), seg_num + 1, set_flags(1, 1, 0, 0))
+            packet = send_packet(server_seq_num, client_seq_num + 1, set_flags(1, 1, 0, 0))
             server_socket.sendto(packet, client_address)
             print("SYN-ACK packet is sent")
-            print_header(packet)
+            print_header(packet[:6], True)
         else:
             print("SYN packet is not received")
             socket.error("SYN packet is not received")
 
         # Receive ACK packet
-        ack_packet, _ = server_socket.recvfrom(DRTP_struct.size)
-        _, _, flags = unpack_header(ack_packet)
-        if flags[1] == 1:
+        packet, _ = server_socket.recvfrom(DRTP_struct.size)
+        _, ack_num, flags = unpack_header(packet)
+        if ack_num == server_seq_num + 1 and flags[1] == 1:
             print("ACK packet is received")
-            print_header(ack_packet)
+            print_header(packet[:6], False)
         else:
             print("ACK packet is not received")
             socket.error("ACK packet is not received")
@@ -146,34 +155,37 @@ def run_server(ip, port):
     except socket.error as e:
         print(f"Error: {e}")
 
-def run_client(ip, port, filename):
+def run_client(ip, port, filename, window_size):
     try:
         # Start connection
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_socket.connect((ip, port))
+        client_seq_num = random_seq_num()
+        base_client_seq_num = client_seq_num
         print("Connection Establisht Phase:\n")
 
         # Send SYN packet
-        packet = pack_header(random_seq_num(), 0, set_flags(1, 0, 0, 0))
+        packet = send_packet(client_seq_num, 0, set_flags(1, 0, 0, 0))
         client_socket.send(packet)
         print("SYN packet is sent")
-        print_header(packet)
+        print_header(packet[:6], True)
 
         # Receive SYN-ACK packet
-        syn_ack_packet = client_socket.recv(DRTP_struct.size)
-        seq_num, ack_num, flags = unpack_header(syn_ack_packet)
-        if flags[0] == 1 and flags[1] == 1:
+        packet = client_socket.recv(DRTP_struct.size)
+        server_seq_num, ack_num, flags = unpack_header(packet)
+        if ack_num == client_seq_num + 1 and flags[0] == 1 and flags[1] == 1:
+            client_seq_num = ack_num
             print("SYN-ACK packet is received")
-            print_header(syn_ack_packet)
+            print_header(packet[:6], False)
         else:
             print("SYN-ACK packet is not received")
             socket.error("SYN-ACK packet is not received")
 
         # Send ACK packet
-        ack_packet = pack_header(ack_num, seq_num + 1, set_flags(0, 1, 0, 0))
-        client_socket.send(ack_packet)
+        packet = send_packet(client_seq_num, server_seq_num + 1, set_flags(0, 1, 0, 0))
+        client_socket.send(packet)
         print("ACK packet is sent")
-        print_header(ack_packet)
+        print_header(packet[:6], True)
 
         # Connection established
         print("Connection established\n")
@@ -187,7 +199,10 @@ def run_client(ip, port, filename):
             print(f"Filesize: {filesize}")
 
         # Pack the file without the header
-        packets = pack_file(filename)
+        payload = pack_file(filename)
+
+        # Send the packets with GBN
+        client_socket.settimeout(timeout)
 
     # Exit on keyboard interrupt
     except KeyboardInterrupt:
