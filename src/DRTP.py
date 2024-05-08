@@ -1,6 +1,6 @@
 import struct
 import socket
-import random
+import time
 import os
 from config import *
 
@@ -13,7 +13,7 @@ def print_header(header, sent):
             print(f"seq_num: {seq_num}, ack_num: {ack_num}, flags: {flags}")
         else:
             seq_num, ack_num, flags = unpack_header(header)
-            print(f"{'seq_num: {seq_num}, ack_num: {ack_num}, flags: {flags}': <20}")
+            print(f"{'' : <70}", end=f"seq_num: {seq_num}, ack_num: {ack_num}, flags: {flags}" + "\n")
 
 def set_flags(syn, ack, fin, rst):
     flags = 0
@@ -43,13 +43,10 @@ def unpack_header(header):
     seq_num, ack_num, flags = DRTP_struct.unpack(header)
     return (seq_num, ack_num, get_flags(flags))
 
-def random_seq_num():
-    return random.randint(0, 2 ** 8 - 1) # max 256
-
 def pack_file(filename):
     try:
-        # Array to store the packets
-        packets = []
+        # Array to store the payload
+        payload = []
 
         # Encode the filename
         encoded_filename = filename.encode()
@@ -77,21 +74,21 @@ def pack_file(filename):
                     file_raw_data = f.read(chunk_size - DRTP_struct.size)
                 
                 # Append the packet to the list
-                packets.append(file_raw_data)
+                payload.append(file_raw_data)
                 if not file_raw_data:
                     break
         
         # Print the number of packets
         if debug:
-            print(f"Total packets to send {len(packets)}")
+            print(f"Total packets to send {len(payload)}")
 
         # Print the first 2 packets
         if show_packets:
-            print(f"First packet: {packets[0]}")
-            print(f"Second packet: {packets[1]}")
+            print(f"First packet: {payload[0]}")
+            print(f"Second packet: {payload[1]}")
 
         # Return the packets
-        return packets
+        return payload
     
     # Handle file errors
     except FileNotFoundError as e:
@@ -100,6 +97,20 @@ def pack_file(filename):
     except Exception as e:
         print(f"Error: {e}")
         exit(1)
+
+def unpack_file(payload):
+    try:
+        # Create a new file
+        filename = payload[:max_filename_length].decode().strip('\0')
+        print(f"Filename: {filename}")
+        filename = os.path.join("output", filename)
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        with open(filename, 'wb') as f:
+            f.write(payload[max_filename_length:])
+            print(f"File is written to {filename}")
+    except Exception as e:
+        print(f"Error: {e}")
 
 def send_packet(seq_num, ack_num, flags, payload=None):
     if not payload:
@@ -113,40 +124,78 @@ def run_server(ip, port, discard):
         # Start connection
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         server_socket.bind((ip, port))
-        server_seq_num = random_seq_num()
-        base_server_seq_num = server_seq_num
         print("Server is listening...\n")
 
         # Receive SYN packet
         packet, client_address = server_socket.recvfrom(DRTP_struct.size)
-        client_seq_num , _, flags = unpack_header(packet)
-        base_client_seq_num = client_seq_num
+        ack_num , _, flags = unpack_header(packet)
         print("SYN packet is received")
         print_header(packet[:6], False)
 
         # Send SYN-ACK packet
+        seq_num = 0
         if flags[0] == 1:
-            packet = send_packet(server_seq_num, client_seq_num + 1, set_flags(1, 1, 0, 0))
+            packet = send_packet(seq_num, ack_num + 1, set_flags(1, 1, 0, 0))
             server_socket.sendto(packet, client_address)
             print("SYN-ACK packet is sent")
             print_header(packet[:6], True)
         else:
-            print("SYN packet is not received")
             socket.error("SYN packet is not received")
 
         # Receive ACK packet
         packet, _ = server_socket.recvfrom(DRTP_struct.size)
-        _, ack_num, flags = unpack_header(packet)
-        if ack_num == server_seq_num + 1 and flags[1] == 1:
+        ack_num, seq_num, flags = unpack_header(packet)
+        if ack_num == seq_num + 1 and flags[1] == 1:
             print("ACK packet is received")
             print_header(packet[:6], False)
         else:
-            print("ACK packet is not received")
             socket.error("ACK packet is not received")
 
         # Connection established
-        print("Connection established\n")
-    
+        print("Connection established\n")            
+
+        # Receive file and send ACKs
+        excpected_ack_num = 1
+        payload = []
+        seqs_received = []
+        while True:
+            packet, _ = server_socket.recvfrom(chunk_size)
+            ack_num, seq_num, flags = unpack_header(packet[:DRTP_struct.size])
+
+
+            # Discard the packet
+            if ack_num == discard:
+                discard = None
+                continue
+
+            print_header(packet[:6], False)
+
+            if ack_num == excpected_ack_num and not flags[2] == 1:
+                print(f"packet {ack_num} is received")
+                excpected_ack_num += 1
+                payload.append(packet[DRTP_struct.size:])
+                seqs_received.append(ack_num)
+                packet = send_packet(seq_num, ack_num + 1, set_flags(0, 1, 0, 0))
+                server_socket.sendto(packet, client_address)
+                print(f"sending ack for the received {ack_num}")
+                print_header(packet[:6], True)
+            elif flags[2] == 1:
+                # FIN packet is received
+                print("\nFIN packet is received")
+                print_header(packet[:6], False)
+
+                # Send FIN-ACK packet
+                packet = send_packet(seq_num, ack_num + 1, set_flags(0, 1, 1, 0))
+                server_socket.sendto(packet, client_address)
+                print("FIN-ACK packet is sent\n")
+                print_header(packet[:6], True)
+                break
+            else:
+                print(f"out-of-order packet {ack_num} is received") 
+            
+        # Write the file
+        unpack_file(b''.join(payload))
+
     # Exit on keyboard interrupt
     except KeyboardInterrupt:
         print("Server is stopped")
@@ -160,21 +209,19 @@ def run_client(ip, port, filename, window_size):
         # Start connection
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_socket.connect((ip, port))
-        client_seq_num = random_seq_num()
-        base_client_seq_num = client_seq_num
+        seq_num = 0
         print("Connection Establisht Phase:\n")
 
         # Send SYN packet
-        packet = send_packet(client_seq_num, 0, set_flags(1, 0, 0, 0))
+        packet = send_packet(seq_num, 0, set_flags(1, 0, 0, 0))
         client_socket.send(packet)
         print("SYN packet is sent")
         print_header(packet[:6], True)
 
         # Receive SYN-ACK packet
         packet = client_socket.recv(DRTP_struct.size)
-        server_seq_num, ack_num, flags = unpack_header(packet)
-        if ack_num == client_seq_num + 1 and flags[0] == 1 and flags[1] == 1:
-            client_seq_num = ack_num
+        ack_num, seq_num, flags = unpack_header(packet)
+        if flags[0] == 1 and flags[1] == 1:
             print("SYN-ACK packet is received")
             print_header(packet[:6], False)
         else:
@@ -182,7 +229,8 @@ def run_client(ip, port, filename, window_size):
             socket.error("SYN-ACK packet is not received")
 
         # Send ACK packet
-        packet = send_packet(client_seq_num, server_seq_num + 1, set_flags(0, 1, 0, 0))
+        ack_num += 1
+        packet = send_packet(seq_num, ack_num, set_flags(0, 1, 0, 0))
         client_socket.send(packet)
         print("ACK packet is sent")
         print_header(packet[:6], True)
@@ -192,7 +240,7 @@ def run_client(ip, port, filename, window_size):
 
         # Send file
         filesize = os.path.getsize(filename)
-        print("Data Transfer Phase:\n")
+        print("Data Transfer:\n")
 
         if debug:
             filesize = os.path.getsize(filename)
@@ -202,12 +250,73 @@ def run_client(ip, port, filename, window_size):
         payload = pack_file(filename)
 
         # Send the packets with GBN
+        start_time = time.time()
+        print(start_time)
         client_socket.settimeout(timeout)
 
+        # Set variables
+        seq_num = 0
+        slidding_window = []
+        exspected_ack = 2
+
+        while True:
+            # Send the packets
+            while(len(slidding_window) < window_size and seq_num < len(payload)):
+                seq_num += 1
+                slidding_window.append(seq_num)
+                if seq_num > len(payload):
+                    break
+                packet = send_packet(seq_num, ack_num, set_flags(0, 0, 0, 0), payload[seq_num - 1])
+                client_socket.send(packet)
+                print(f"packet with seq = {seq_num} is sent, sliding window = {slidding_window}")
+                print_header(packet[:6], True)
+
+            # Receive the ACKs
+            try:
+                packet = client_socket.recv(DRTP_struct.size)
+                _, check_ack_num, flags = unpack_header(packet)
+                if check_ack_num == exspected_ack:
+                    slidding_window.pop(0)
+                    exspected_ack += 1
+                    print(f"ACK for packet = {check_ack_num} is received")
+                    print_header(packet[:6], False)
+                else:
+                    print(f"Expected ACK: {exspected_ack} received ACK: {check_ack_num}, Error: ACK is not expected")
+                    break
+
+            # Resend window on timeout
+            except socket.timeout:
+                print("RTO occured")
+                for seq_num in slidding_window:
+                    if seq_num > len(payload):
+                        break
+                    packet = send_packet(seq_num, ack_num, set_flags(0, 0, 0, 0), payload[seq_num - 1])
+                    client_socket.send(packet)
+                    print(f"retransmitting packet with seq = {seq_num}")
+            
+            # Send FIN packet after sending all the packets
+            if len(slidding_window) == 0:
+                packet = send_packet(check_ack_num, ack_num, set_flags(0, 0, 1, 0))
+                client_socket.send(packet)
+                print("\nFIN packet is sent")
+                print_header(packet[:6], True)
+
+                # Receive FIN-ACK packet
+                packet = client_socket.recv(DRTP_struct.size)
+                _, check_ack_num, flags = unpack_header(packet)
+                if flags[2] == 1 and flags[1] == 1:
+                    print("FIN-ACK packet is received\n")
+                    print_header(packet[:6], False)
+                    break
+                else:
+                    print("FIN-ACK packet is not received")
+                    print_header(packet[:6], False)
+                    socket.error("FIN-ACK packet is not received")
+                
     # Exit on keyboard interrupt
     except KeyboardInterrupt:
         print("Client is stopped")
 
     # Handle socket errors
     except socket.error as e:
-        print(f"Error in handshake: {e}")
+        print(f"Error: {e}")
