@@ -1,6 +1,5 @@
-import struct
 import socket
-import time
+import datetime
 import os
 from config import *
 
@@ -33,8 +32,6 @@ def get_flags(flags):
     fin = int(bool(flags & (1 << 1)))
     rst = int(bool(flags & (1 << 0)))
     return (syn, ack, fin, rst)
-
-DRTP_struct = struct.Struct("!HHH")
 
 def pack_header(seq_num, ack_num, flags):
     return DRTP_struct.pack(seq_num, ack_num, flags)
@@ -112,6 +109,7 @@ def unpack_file(payload):
     except Exception as e:
         print(f"Error: {e}")
 
+# Send a packet with the given sequence number, acknowledgment number, flags, and optional payload
 def send_packet(seq_num, ack_num, flags, payload=None):
     if not payload:
         packet = pack_header(seq_num, ack_num, flags)
@@ -152,7 +150,11 @@ def run_server(ip, port, discard):
             socket.error("ACK packet is not received")
 
         # Connection established
-        print("Connection established\n")            
+        print("Connection established\n")   
+
+        # Start receiving the file
+        start_time = datetime.datetime.now()
+        formatted_time = start_time.strftime('%H:%M:%S.%f')
 
         # Receive file and send ACKs
         excpected_ack_num = 1
@@ -162,7 +164,6 @@ def run_server(ip, port, discard):
             packet, _ = server_socket.recvfrom(chunk_size)
             ack_num, seq_num, flags = unpack_header(packet[:DRTP_struct.size])
 
-
             # Discard the packet
             if ack_num == discard:
                 discard = None
@@ -170,14 +171,15 @@ def run_server(ip, port, discard):
 
             print_header(packet[:6], False)
 
+            # Send ACK for the received packet
             if ack_num == excpected_ack_num and not flags[2] == 1:
-                print(f"packet {ack_num} is received")
+                print(f"{formatted_time} -- packet {ack_num} is received")
                 excpected_ack_num += 1
                 payload.append(packet[DRTP_struct.size:])
                 seqs_received.append(ack_num)
                 packet = send_packet(seq_num, ack_num + 1, set_flags(0, 1, 0, 0))
                 server_socket.sendto(packet, client_address)
-                print(f"sending ack for the received {ack_num}")
+                print(f"{formatted_time} -- sending ack for the received {ack_num}")
                 print_header(packet[:6], True)
             elif flags[2] == 1:
                 # FIN packet is received
@@ -191,8 +193,25 @@ def run_server(ip, port, discard):
                 print_header(packet[:6], True)
                 break
             else:
-                print(f"out-of-order packet {ack_num} is received") 
-            
+                print(f"{formatted_time} -- out-of-order packet {ack_num} is received")
+                print(f"missing packet: {excpected_ack_num}")
+        
+        # Elapsed time
+        elapsed_time = datetime.datetime.now() - start_time
+
+        # Cal
+        throughput = ((len(payload) * (chunk_size - DRTP_struct.size)) / elapsed_time.total_seconds()) * 8
+        if throughput > 1000000:
+            throughput = float(throughput) / 1000000
+            print(f"The throughput is {throughput:.2f} Mbps")
+        elif throughput > 1000:
+            throughput = float(throughput) / 1000
+            print(f"The throughput is {throughput:.2f} Kbps")
+        else:
+            print(f"The throughput is {throughput:.2f} bps")
+        
+        print("Connection Closes\n")
+
         # Write the file
         unpack_file(b''.join(payload))
 
@@ -250,8 +269,8 @@ def run_client(ip, port, filename, window_size):
         payload = pack_file(filename)
 
         # Send the packets with GBN
-        start_time = time.time()
-        print(start_time)
+        start_time = datetime.datetime.now()
+        formatted_time = start_time.strftime('%H:%M:%S.%f')
         client_socket.settimeout(timeout)
 
         # Set variables
@@ -268,7 +287,7 @@ def run_client(ip, port, filename, window_size):
                     break
                 packet = send_packet(seq_num, ack_num, set_flags(0, 0, 0, 0), payload[seq_num - 1])
                 client_socket.send(packet)
-                print(f"packet with seq = {seq_num} is sent, sliding window = {slidding_window}")
+                print(f"{formatted_time} -- packet with seq = {seq_num} is sent, sliding window = {slidding_window}")
                 print_header(packet[:6], True)
 
             # Receive the ACKs
@@ -278,34 +297,34 @@ def run_client(ip, port, filename, window_size):
                 if check_ack_num == exspected_ack:
                     slidding_window.pop(0)
                     exspected_ack += 1
-                    print(f"ACK for packet = {check_ack_num} is received")
+                    print(f"{formatted_time} -- ACK for packet = {check_ack_num} is received")
                     print_header(packet[:6], False)
                 else:
                     print(f"Expected ACK: {exspected_ack} received ACK: {check_ack_num}, Error: ACK is not expected")
-                    break
+                    raise socket.timeout
 
             # Resend window on timeout
             except socket.timeout:
-                print("RTO occured")
+                print(f"{formatted_time} -- RTO occured")
                 for seq_num in slidding_window:
                     if seq_num > len(payload):
                         break
                     packet = send_packet(seq_num, ack_num, set_flags(0, 0, 0, 0), payload[seq_num - 1])
                     client_socket.send(packet)
-                    print(f"retransmitting packet with seq = {seq_num}")
+                    print(f"{formatted_time} -- retransmitting packet with seq = {seq_num}")
             
             # Send FIN packet after sending all the packets
             if len(slidding_window) == 0:
                 packet = send_packet(check_ack_num, ack_num, set_flags(0, 0, 1, 0))
                 client_socket.send(packet)
-                print("\nFIN packet is sent")
+                print("\nDATA Finished\n\nConnection Teardown:\n\nFIN packet is sent")
                 print_header(packet[:6], True)
 
                 # Receive FIN-ACK packet
                 packet = client_socket.recv(DRTP_struct.size)
                 _, check_ack_num, flags = unpack_header(packet)
                 if flags[2] == 1 and flags[1] == 1:
-                    print("FIN-ACK packet is received\n")
+                    print("FIN-ACK packet is received\nConnection Closes")
                     print_header(packet[:6], False)
                     break
                 else:
