@@ -153,8 +153,8 @@ def run_server(ip, port, discard):
         print("Connection established\n")   
 
         # Start receiving the file
+        server_socket.settimeout(timeout * 10)
         start_time = datetime.datetime.now()
-        formatted_time = start_time.strftime('%H:%M:%S.%f')
 
         # Receive file and send ACKs
         excpected_ack_num = 1
@@ -165,7 +165,7 @@ def run_server(ip, port, discard):
             ack_num, seq_num, flags = unpack_header(packet[:DRTP_struct.size])
 
             # Discard the packet
-            if ack_num == discard:
+            if ack_num == discard and flags[2] == 0:
                 discard = None
                 continue
 
@@ -173,13 +173,13 @@ def run_server(ip, port, discard):
 
             # Send ACK for the received packet
             if ack_num == excpected_ack_num and not flags[2] == 1:
-                print(f"{formatted_time} -- packet {ack_num} is received")
+                print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- packet {ack_num} is received")
                 excpected_ack_num += 1
                 payload.append(packet[DRTP_struct.size:])
                 seqs_received.append(ack_num)
                 packet = send_packet(seq_num, ack_num + 1, set_flags(0, 1, 0, 0))
                 server_socket.sendto(packet, client_address)
-                print(f"{formatted_time} -- sending ack for the received {ack_num}")
+                print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- sending ack for the received {ack_num}")
                 print_header(packet[:6], True)
             elif flags[2] == 1:
                 # FIN packet is received
@@ -193,9 +193,8 @@ def run_server(ip, port, discard):
                 print_header(packet[:6], True)
                 break
             else:
-                print(f"{formatted_time} -- out-of-order packet {ack_num} is received")
-                print(f"missing packet: {excpected_ack_num}")
-        
+                print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- out-of-order packet {ack_num} is received")
+    
         # Elapsed time
         elapsed_time = datetime.datetime.now() - start_time
 
@@ -270,7 +269,6 @@ def run_client(ip, port, filename, window_size):
 
         # Send the packets with GBN
         start_time = datetime.datetime.now()
-        formatted_time = start_time.strftime('%H:%M:%S.%f')
         client_socket.settimeout(timeout)
 
         # Set variables
@@ -287,7 +285,7 @@ def run_client(ip, port, filename, window_size):
                     break
                 packet = send_packet(seq_num, ack_num, set_flags(0, 0, 0, 0), payload[seq_num - 1])
                 client_socket.send(packet)
-                print(f"{formatted_time} -- packet with seq = {seq_num} is sent, sliding window = {slidding_window}")
+                print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- packet with seq = {seq_num} is sent, sliding window = {slidding_window}")
                 print_header(packet[:6], True)
 
             # Receive the ACKs
@@ -297,21 +295,22 @@ def run_client(ip, port, filename, window_size):
                 if check_ack_num == exspected_ack:
                     slidding_window.pop(0)
                     exspected_ack += 1
-                    print(f"{formatted_time} -- ACK for packet = {check_ack_num} is received")
+                    print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- ACK for packet = {check_ack_num} is received")
                     print_header(packet[:6], False)
                 else:
                     print(f"Expected ACK: {exspected_ack} received ACK: {check_ack_num}, Error: ACK is not expected")
+                    exspected_ack = check_ack_num + 1
                     raise socket.timeout
 
             # Resend window on timeout
             except socket.timeout:
-                print(f"{formatted_time} -- RTO occured")
+                print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- RTO occured")
                 for seq_num in slidding_window:
                     if seq_num > len(payload):
                         break
                     packet = send_packet(seq_num, ack_num, set_flags(0, 0, 0, 0), payload[seq_num - 1])
                     client_socket.send(packet)
-                    print(f"{formatted_time} -- retransmitting packet with seq = {seq_num}")
+                    print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- retransmitting packet with seq = {seq_num}")
             
             # Send FIN packet after sending all the packets
             if len(slidding_window) == 0:
