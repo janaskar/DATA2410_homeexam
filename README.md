@@ -4,10 +4,14 @@ This Python application facilitates file transfer using the DATA2410 Reliable Tr
 
 ## Requirements
 
-- python 3.x
+- python
 - mininet
 - xterm
 - openvswitch-switch
+
+```bash
+sudo apt-get install python3 mininet xterm openvswitch-switch
+```
 
 ## Installation
 

@@ -172,7 +172,7 @@ def run_server(ip, port, discard):
             print_header(packet[:6], False)
 
             # Send ACK for the received packet
-            if ack_num == excpected_ack_num and not flags[2] == 1:
+            if ack_num <= excpected_ack_num and not flags[2] == 1:
                 print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- packet {ack_num} is received")
                 excpected_ack_num += 1
                 payload.append(packet[DRTP_struct.size:])
