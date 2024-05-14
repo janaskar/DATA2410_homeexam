@@ -47,7 +47,7 @@ python3 application.py -s [-d DISCARD] [-i IP] [-p PORT]
 To run the application in client mode:
 
 ```bash
-python application.py -c -f FILE [-w WINDOW_SIZE] [-i IP] [-p PORT]
+python3 application.py -c -f FILE [-w WINDOW_SIZE] [-i IP] [-p PORT]
 ```
 
 - `-f`, `--file`: Name of the file to send. (required).
@@ -60,7 +60,7 @@ python application.py -c -f FILE [-w WINDOW_SIZE] [-i IP] [-p PORT]
 ### Server Mode
 
 ```bash
-python application.py -s -d 8 -i 10.0.1.2 -p 8080
+python3 application.py -s -d 8 -i 10.0.1.2 -p 8080
 ```
 
 This command runs the server in discard mode on IP address `10.0.1.2` and port `8080`. It discards the packet with sequence number 8.
@@ -68,7 +68,7 @@ This command runs the server in discard mode on IP address `10.0.1.2` and port `
 ### Client Mode
 
 ```bash
-python application.py -c -f iceland_safiqul.jpg -w 5 -i 10.0.1.2 -p 8080
+python3 application.py -c -f iceland_safiqul.jpg -w 5 -i 10.0.1.2 -p 8080
 ```
 
 This command sends the file `iceland_safiqul.jpg` using a window size of 5 packets to the server at IP address `10.0.1.2` and port `8080`.
