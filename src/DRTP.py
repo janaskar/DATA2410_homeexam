@@ -191,6 +191,7 @@ def run_server(ip, port, discard):
                 server_socket.sendto(packet, client_address)
                 print("FIN-ACK packet is sent\n")
                 print_header(packet[:6], True)
+                server_socket.close()
                 break
             else:
                 print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- out-of-order packet {ack_num} is received")
@@ -198,8 +199,9 @@ def run_server(ip, port, discard):
         # Elapsed time
         elapsed_time = datetime.datetime.now() - start_time
 
-        # Cal
-        throughput = ((len(payload) * (chunk_size - DRTP_struct.size)) / elapsed_time.total_seconds()) * 8
+        # Calculate throughput
+        total_data = sum(map(len, payload)) # Total data with filename in bytes
+        throughput = (total_data / elapsed_time.total_seconds()) * 8
         if throughput > 1000000:
             throughput = float(throughput) / 1000000
             print(f"The throughput is {throughput:.2f} Mbps")
@@ -268,7 +270,6 @@ def run_client(ip, port, filename, window_size):
         payload = pack_file(filename)
 
         # Send the packets with GBN
-        start_time = datetime.datetime.now()
         client_socket.settimeout(timeout)
 
         # Set variables
@@ -325,6 +326,7 @@ def run_client(ip, port, filename, window_size):
                 if flags[2] == 1 and flags[1] == 1:
                     print("FIN-ACK packet is received\nConnection Closes")
                     print_header(packet[:6], False)
+                    client_socket.close()
                     break
                 else:
                     print("FIN-ACK packet is not received")
