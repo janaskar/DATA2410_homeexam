@@ -159,7 +159,6 @@ def run_server(ip, port, discard):
         # Receive file and send ACKs
         excpected_ack_num = 1
         payload = []
-        seqs_received = []
         while True:
             packet, _ = server_socket.recvfrom(chunk_size)
             ack_num, seq_num, flags = unpack_header(packet[:DRTP_struct.size])
@@ -172,13 +171,16 @@ def run_server(ip, port, discard):
             print_header(packet[:6], False)
 
             # Send ACK for the received packet
-            if ack_num <= excpected_ack_num and not flags[2] == 1:
+            if ack_num <= excpected_ack_num and not flags[2] == 1: # Will send ack for packets in order and any previous
                 print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- packet {ack_num} is received")
-                excpected_ack_num += 1
-                payload.append(packet[DRTP_struct.size:])
-                seqs_received.append(ack_num)
+                # add the payload to the list if the packet is not a duplicate
+                if ack_num == excpected_ack_num:
+                    payload.append(packet[DRTP_struct.size:])
+                else:
+                    print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- duplicate packet {ack_num} is received")
                 packet = send_packet(seq_num, ack_num + 1, set_flags(0, 1, 0, 0))
                 server_socket.sendto(packet, client_address)
+                excpected_ack_num += 1
                 print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- sending ack for the received {ack_num}")
                 print_header(packet[:6], True)
             elif flags[2] == 1:
