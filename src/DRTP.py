@@ -1,10 +1,19 @@
-import socket
-import datetime
-import os
-from config import *
+import socket       # For socket programming
+import datetime     # For timestamp
+import os           # For file operations
+from config import *    # Import the configuration
 
 print("\n")
 
+"""
+Description:
+    Function to print the header of a packet if debug is enabled
+Parameters:
+    header: bytes - The header of the packet
+    sent: bool - If the packet was sent or received
+Return:
+    None - Print the header
+"""
 def print_header(header, sent):
     if debug:
         if sent:
@@ -14,6 +23,19 @@ def print_header(header, sent):
             seq_num, ack_num, flags = unpack_header(header)
             print(f"{'' : <70}", end=f"seq_num: {seq_num}, ack_num: {ack_num}, flags: {flags}" + "\n")
 
+"""
+Description:
+    Function to set the flags in the header in a way that is easier then bit manipulation
+Parameters:
+    # NOTE: The flags are in the order of SYN, ACK, FIN, RST
+    # The flags are set to 1 if the flag is set, else 0
+    syn: bool - If the SYN flag is set
+    ack: bool - If the ACK flag is set
+    fin: bool - If the FIN flag is set
+    rst: bool - If the RST flag is set
+Return:
+    flags: int - The flags in the header
+"""
 def set_flags(syn, ack, fin, rst):
     flags = 0
     if syn:
@@ -26,20 +48,59 @@ def set_flags(syn, ack, fin, rst):
         flags |= (1 << 0)  # 1 << 0 = 0001
     return flags
 
-def get_flags(flags):
+"""
+Description:
+    Function to parse the flags in the header so that it is easier to read and understand
+Parameters:
+    flags: int - The flags in the header
+Return:
+    syn: int - If the SYN flag is set
+    ack: int - If the ACK flag is set
+    fin: int - If the FIN flag is set
+    rst: int - If the RST flag is set
+"""
+def parse_flags(flags):
     syn = int(bool(flags & (1 << 3)))
     ack = int(bool(flags & (1 << 2)))
     fin = int(bool(flags & (1 << 1)))
     rst = int(bool(flags & (1 << 0)))
     return (syn, ack, fin, rst)
 
+"""
+Description:
+    Function to pack the header of a packet with the sequence number, acknowledgment number, and flags
+Parameters:
+    seq_num: int - The sequence number of the packet
+    ack_num: int - The acknowledgment number of the packet
+    flags: int - The flags of the packet
+Return:
+    header: bytes - The header of the packet # format: seq_num(0000 0000 0000 0001), ack_num(0000 0000 0000 0010), flags(0000 0000 0000 0100)
+"""
 def pack_header(seq_num, ack_num, flags):
     return DRTP_struct.pack(seq_num, ack_num, flags)
 
+"""
+Description:
+    Function to unpack the header of a packet to get the sequence number, acknowledgment number, and flags
+Parameters:
+    header: bytes - The header of the packet
+Return:
+    seq_num: int - The sequence number of the packet
+    ack_num: int - The acknowledgment number of the packet
+    flags: int - The flags of the packet
+"""
 def unpack_header(header):
     seq_num, ack_num, flags = DRTP_struct.unpack(header)
-    return (seq_num, ack_num, get_flags(flags))
+    return (seq_num, ack_num, parse_flags(flags))
 
+"""
+Description:
+    Function to pack a file into data payloads to send, with the filename is the first payload
+Parameters:
+    filename: str - The name of the file to pack
+Return:
+    payload: list - The list of payloads to send # format: [filename, data1, data2, ...] # payloads are without the header
+"""
 def pack_file(filename):
     try:
         # Array to store the payload
@@ -95,6 +156,14 @@ def pack_file(filename):
         print(f"Error: {e}")
         exit(1)
 
+"""
+Description:
+    Function to unpack the payloads of a file to write the file
+Parameters:
+    payload: list - The list of payloads to unpack
+Return:
+    None - Write the file to the output directory
+"""
 def unpack_file(payload):
     try:
         # Create a new file
@@ -109,7 +178,17 @@ def unpack_file(payload):
     except Exception as e:
         print(f"Error: {e}")
 
-# Send a packet with the given sequence number, acknowledgment number, flags, and optional payload
+"""
+Description:
+    Send a packet with the given sequence number, acknowledgment number, flags, and optional payload
+Parameters:
+    seq_num: int - The sequence number of the packet
+    ack_num: int - The acknowledgment number of the packet
+    flags: int - The flags of the packet
+    payload: bytes - The payload of the packet (optional)
+Return:
+    packet: bytes - The packet to send
+"""
 def send_packet(seq_num, ack_num, flags, payload=None):
     if not payload:
         packet = pack_header(seq_num, ack_num, flags)
@@ -117,6 +196,16 @@ def send_packet(seq_num, ack_num, flags, payload=None):
         packet = pack_header(seq_num, ack_num, flags) + payload
     return packet
 
+"""
+Description:
+    Function to run the server to receive the file
+Parameters:
+    ip: str - The IP address of the server
+    port: int - The port of the server
+    discard: int - The packet to discard
+Return:
+    None - Run the server
+"""
 def run_server(ip, port, discard):
     try:
         # Start connection
@@ -232,6 +321,17 @@ def run_server(ip, port, discard):
     except socket.error as e:
         print(f"Error: {e}")
 
+"""
+Description:
+    Function to run the client to send the file
+Parameters:
+    ip: str - The IP address of the server
+    port: int - The port of the server
+    filename: str - The name of the file to send
+    window_size: int - The size of the sliding window
+Return:
+    None - Run the client
+"""
 def run_client(ip, port, filename, window_size):
     try:
         # Start connection
