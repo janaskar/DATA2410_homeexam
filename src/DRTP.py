@@ -158,7 +158,7 @@ def run_server(ip, port, discard):
 
         # Receive file and send ACKs
         excpected_ack_num = 1
-        payload = []
+        packets = []
         while True:
             packet, _ = server_socket.recvfrom(chunk_size)
             ack_num, seq_num, flags = unpack_header(packet[:DRTP_struct.size])
@@ -175,7 +175,7 @@ def run_server(ip, port, discard):
                 print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- packet {ack_num} is received")
                 # add the payload to the list if the packet is not a duplicate
                 if ack_num == excpected_ack_num:
-                    payload.append(packet[DRTP_struct.size:])
+                    packets.append(packet)
                 else:
                     print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- duplicate packet {ack_num} is received")
                 packet = send_packet(seq_num, ack_num + 1, set_flags(0, 1, 0, 0))
@@ -202,21 +202,27 @@ def run_server(ip, port, discard):
         elapsed_time = datetime.datetime.now() - start_time
 
         # Calculate throughput
-        total_data = sum(map(len, payload)) # Total data with filename in bytes
+        total_data = sum(map(len, packets)) # Total data with filename in bytes
         throughput = (total_data / elapsed_time.total_seconds()) * 8
-        if throughput > 1000000:
-            throughput = float(throughput) / 1000000
+        if throughput > 1_000_000:
+            throughput = float(throughput) / 1_000_000
             print(f"The throughput is {throughput:.2f} Mbps")
-        elif throughput > 1000:
-            throughput = float(throughput) / 1000
+        elif throughput > 1_000:
+            throughput = float(throughput) / 1_000
             print(f"The throughput is {throughput:.2f} Kbps")
         else:
             print(f"The throughput is {throughput:.2f} bps")
         
         print("Connection Closes\n")
 
-        # Write the file
-        unpack_file(b''.join(payload))
+        if debug:
+            print(f"total_data: {total_data}")
+            print(f"size of iceland_safiqul.jpg: {os.path.getsize('iceland_safiqul.jpg')}")
+            print(f"size of output/iceland_safiqul.jpg: {os.path.getsize('output/iceland_safiqul.jpg')}")
+
+        # get payload and Write the file
+        payload = b''.join([packet[DRTP_struct.size:] for packet in packets])
+        unpack_file(payload)
 
     # Exit on keyboard interrupt
     except KeyboardInterrupt:
@@ -298,12 +304,14 @@ def run_client(ip, port, filename, window_size):
                 if check_ack_num == exspected_ack:
                     slidding_window.pop(0)
                     exspected_ack += 1
-                    print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- ACK for packet = {check_ack_num} is received")
+                    print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- ACK for packet = {check_ack_num - 1} is received")
                     print_header(packet[:6], False)
                 else:
-                    print(f"Expected ACK: {exspected_ack} received ACK: {check_ack_num}, Error: ACK is not expected")
-                    exspected_ack = check_ack_num + 1
-                    raise socket.timeout
+                    while check_ack_num != exspected_ack:
+                        slidding_window.pop(0)
+                        print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- Did not receive ACK for packet = {exspected_ack - 1}, skipping to {check_ack_num - 1}")
+                        exspected_ack += 1
+                    print_header(packet[:6], False)
 
             # Resend window on timeout
             except socket.timeout:
