@@ -50,7 +50,7 @@ To run the application in client mode:
 python3 application.py -c -f FILE [-w WINDOW_SIZE] [-i IP] [-p PORT]
 ```
 
-- `-f`, `--file`: Name of the file to send. (required).
+- `-f`, `--file`: Name of the file to send. (required) (e.g., `iceland_safiqul.jpg` or `sample.txt`).
 - `-w`, `--window`: Set the window size (default is specified in `config.py`).
 - `-i`, `--ip`: IP address to connect to (default is specified in `config.py`).
 - `-p`, `--port`: Port to connect to (default is specified in `config.py`).
