@@ -11,6 +11,6 @@ chunk_size = packet_size - DRTP_struct.size # 994 bytes for data
 timeout = 0.5   # 500ms
 
 # Debugging lines
-debug = True
+debug = False
 # File transfer packets only
 show_packets = False
