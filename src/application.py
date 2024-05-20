@@ -100,7 +100,7 @@ def main():
         error_message = None
         try:
             value = int(value)
-            if value <= 0:
+            if value < 0:
                 error_message = f"{value} is not a positive integer"
                 raise ValueError
         except ValueError:
