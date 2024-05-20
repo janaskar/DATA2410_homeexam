@@ -168,13 +168,22 @@ def unpack_file(payload):
     try:
         # Create a new file
         filename = payload[:max_filename_length].decode().strip('\0')
+
         print(f"Filename: {filename}")
+        # Print the size of the file
+        if debug:
+            print(f"size of iceland_safiqul.jpg: {os.path.getsize(filename)}")
+        
         filename = os.path.join("output", filename)
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, 'wb') as f:
             f.write(payload[max_filename_length:])
             print(f"File is written to {filename}")
+
+        # Print the size of the file
+        if debug:
+            print(f"size of output/iceland_safiqul.jpg: {os.path.getsize(str(filename))}")
     except Exception as e:
         print(f"Error: {e}")
 
@@ -292,7 +301,8 @@ def run_server(ip, port, discard):
 
         # Calculate throughput
         total_data = sum(map(len, packets)) # Total data with filename in bytes
-        throughput = (total_data / elapsed_time.total_seconds()) * 8
+        time_in_seconds = elapsed_time.total_seconds()
+        throughput = (total_data / time_in_seconds) * 8
         if throughput > 1_000_000:
             throughput = float(throughput) / 1_000_000
             print(f"The throughput is {throughput:.2f} Mbps")
@@ -306,8 +316,7 @@ def run_server(ip, port, discard):
 
         if debug:
             print(f"total_data: {total_data}")
-            print(f"size of iceland_safiqul.jpg: {os.path.getsize('iceland_safiqul.jpg')}")
-            print(f"size of output/iceland_safiqul.jpg: {os.path.getsize('output/iceland_safiqul.jpg')}")
+            print(f"time_in_seconds: {time_in_seconds}")
 
         # get payload and Write the file
         payload = b''.join([packet[DRTP_struct.size:] for packet in packets])
