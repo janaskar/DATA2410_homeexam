@@ -281,8 +281,9 @@ def run_server(ip, port, discard):
                 excpected_ack_num += 1
                 print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- sending ack for the received {ack_num}")
                 print_header(packet[:6], True)
+            
+            # FIN packet is received
             elif flags[2] == 1:
-                # FIN packet is received
                 print("\nFIN packet is received")
                 print_header(packet[:6], False)
 
@@ -433,7 +434,7 @@ def run_client(ip, port, filename, window_size):
                     print(f"{datetime.datetime.now().strftime('%H:%M:%S.%f')} -- retransmitting packet with seq = {seq_num}")
             
             # Send FIN packet after sending all the packets
-            if len(slidding_window) == 0:
+            if len(slidding_window) == 0 and seq_num == len(payload):
                 packet = send_packet(check_ack_num, ack_num, set_flags(0, 0, 1, 0))
                 client_socket.send(packet)
                 print("\nDATA Finished\n\nConnection Teardown:\n\nFIN packet is sent")
